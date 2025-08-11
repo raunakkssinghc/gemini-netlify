@@ -29,7 +29,7 @@ export async function handler(event) {
     }
 
     // Pick a model. You can override by passing { "model": "..." } in the POST body.
-    const MODEL_ID = model || process.env.GEMINI_MODEL_ID || "models/gemini-1.5-pro";
+    const MODEL_ID = model || process.env.GEMINI_MODEL_ID || "models/gemini-2.5-pro";
 
     // Build request for Google Generative Language API
     const url = `https://generativelanguage.googleapis.com/v1beta/${MODEL_ID}:generateContent?key=${API_KEY}`;
