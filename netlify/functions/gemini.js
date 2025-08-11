@@ -1,76 +1,59 @@
 // netlify/functions/gemini.js
 export async function handler(event) {
-  // (Optional) allow local test via GET
-  if (event.httpMethod === "GET") {
-    return { statusCode: 200, body: JSON.stringify({ ok: true }) };
-  }
-
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: JSON.stringify({ error: "Use POST" }) };
   }
 
   try {
-    const { prompt, system, model } = JSON.parse(event.body || "{}");
+    const { prompt, model, urls } = JSON.parse(event.body || "{}");
 
-    if (!prompt || typeof prompt !== "string") {
+    const API_KEY = "AIzaSyB5MqP-jnqzUl5IPPGXLoORrMzil_uNnfI";
+    const MODEL_ID = model || "models/gemini-2.5-pro";
+
+    if (!prompt) {
       return { statusCode: 400, body: JSON.stringify({ error: "Missing 'prompt' (string)" }) };
     }
 
-    // Security: require a shared secret (set in Netlify env) if you want
-    const requiredSecret = process.env.PRIVATE_WEBHOOK_SECRET || "";
-    const providedSecret = event.headers["x-api-secret"] || event.headers["X-Api-Secret"];
-    if (requiredSecret && providedSecret !== requiredSecret) {
-      return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+    // Enable Google Search grounding; optionally also enable URL context
+    const tools = [{ google_search: {} }];
+    if (Array.isArray(urls) && urls.length > 0) {
+      tools.push({ url_context: {} }); // lets Gemini read the URLs you pass
     }
-
-    const API_KEY = "AIzaSyB5MqP-jnqzUl5IPPGXLoORrMzil_uNnfI";
-    if (!API_KEY) {
-      return { statusCode: 500, body: JSON.stringify({ error: "Server missing GEMINI_API_KEY" }) };
-    }
-
-    // Pick a model. You can override by passing { "model": "..." } in the POST body.
-    const MODEL_ID = model || process.env.GEMINI_MODEL_ID || "models/gemini-2.5-pro";
-
-    // Build request for Google Generative Language API
-    const url = `https://generativelanguage.googleapis.com/v1beta/${MODEL_ID}:generateContent?key=${API_KEY}`;
 
     const body = {
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      contents: [{ parts: [{ text: prompt }] }],
+      tools,
     };
 
-    // Optional "system" instruction (if provided)
-    if (system && typeof system === "string") {
-      body.systemInstruction = { role: "system", parts: [{ text: system }] };
+    // If you pass URLs, include them as an additional user message so URL Context can kick in
+    if (Array.isArray(urls) && urls.length > 0) {
+      body.contents.push({ parts: [{ text: "Use these URLs as context:\n" + urls.join("\n") }] });
     }
 
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${MODEL_ID}:generateContent?key=${API_KEY}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+    );
 
     const data = await resp.json();
 
-    // Parse out the first text candidate safely
+    // Pull the text
     const text =
-      data?.candidates?.[0]?.content?.parts?.map(p => p?.text).filter(Boolean).join("\n") ||
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      null;
+      data?.candidates?.[0]?.content?.parts?.map(p => p?.text).filter(Boolean).join("\n") || null;
 
-    // If the API returned a safety block or error, surface it
-    if (!resp.ok || !text) {
-      return {
-        statusCode: 200, // keep 200 so Zapier can read the JSON result
-        body: JSON.stringify({
-          error: data?.error?.message || "No text returned",
-          raw: data,
-        }),
-      };
-    }
+    // Optionally surface sources (from grounding + url context)
+    const sources =
+      data?.candidates?.[0]?.groundingMetadata?.groundingChunks?.map(c => c?.web?.uri)?.filter(Boolean) || [];
+    const urlMeta = data?.candidates?.[0]?.urlContextMetadata?.url_metadata || [];
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ result: text, model: MODEL_ID }),
+      body: JSON.stringify({
+        result: text || "No text returned",
+        sources,                      // from Google Search grounding
+        urlContext: urlMeta,          // from URL context tool
+        model: MODEL_ID
+      }),
     };
   } catch (err) {
     return { statusCode: 200, body: JSON.stringify({ error: String(err) }) };
