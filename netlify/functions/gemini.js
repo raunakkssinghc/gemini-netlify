@@ -23,7 +23,7 @@ export async function handler(event) {
       return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
     }
 
-    const API_KEY = process.env.GEMINI_API_KEY;
+    const API_KEY = "AIzaSyB5MqP-jnqzUl5IPPGXLoORrMzil_uNnfI";
     if (!API_KEY) {
       return { statusCode: 500, body: JSON.stringify({ error: "Server missing GEMINI_API_KEY" }) };
     }
