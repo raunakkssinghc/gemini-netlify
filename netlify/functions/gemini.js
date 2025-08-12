@@ -15,18 +15,23 @@ export async function handler(event) {
         return { statusCode: 400, body: JSON.stringify({ error: "Missing 'prompt' (string)" }) };
       }
   
-      const tools = [{ google_search: {} }];
-      if (Array.isArray(urls) && urls.length > 0) tools.push({ url_context: {} });
-  
-      const req = {
-        contents: [{ parts: [{ text: prompt || "" }] }],
-        tools,
-        generationConfig: generationConfig || {           // ← default config if none provided
-          responseMimeType: "application/json",
-          temperature: 0,
-          maxOutputTokens: 1024
-        }
-      };
+             const tools = [{ google_search: {} }];
+       if (Array.isArray(urls) && urls.length > 0) tools.push({ url_context: {} });
+
+       // inside your handler, after you build `tools`:
+       const cfg = generationConfig || { temperature: 0, maxOutputTokens: 1024 };
+
+       // If tools are present, JSON mode isn't supported → remove it safely
+       if (tools && tools.length > 0) {
+         delete cfg.responseMimeType;
+         delete cfg.response_mime_type;
+       }
+
+       const req = {
+         contents: [{ parts: [{ text: prompt || "" }] }],
+         tools,
+         generationConfig: cfg
+       };
   
       if (Array.isArray(urls) && urls.length > 0) {
         req.contents.push({
