@@ -48,10 +48,10 @@ export async function handler(event) {
        const text =
          data?.candidates?.[0]?.content?.parts?.map(p => p?.text).filter(Boolean).join("\n") || null;
 
-       // Keep 200 on error so Zapier can inspect and decide to retry
        if (!resp.ok || !text) {
          return {
-           statusCode: 200,
+           statusCode: 503, // retryable
+           headers: { "Retry-After": "2" }, // optional
            body: JSON.stringify({ error: data?.error?.message || "No text", raw: data, model: MODEL_ID })
          };
        }
@@ -102,8 +102,11 @@ export async function handler(event) {
          })
        };
     } catch (e) {
-      // Keep 200 (we’ll catch this in Zapier and retry)
-      return { statusCode: 200, body: JSON.stringify({ error: String(e) }) };
+      return {
+        statusCode: 503, // retryable
+        headers: { "Retry-After": "2" }, // optional
+        body: JSON.stringify({ error: String(e) })
+      };
     }
   }
   
